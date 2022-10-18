@@ -133,10 +133,15 @@ flags.DEFINE_boolean('use_gpu_relax', None, 'Whether to relax on GPU. '
                      'Relax on GPU can be much faster than CPU, so it is '
                      'recommended to enable if possible. GPUs must be available '
                      'if this setting is enabled.')
-flags.DEFINE_integer('hhblits_n_cpu', 4, 'Specify threads used by HHBlits. '
-                     'HHBlits seems most efficient using 4 threads, '
+flags.DEFINE_boolean('parallel_execution', False, 'Whether to run msa '
+                     'computation in parallel.  There are three tasks, '
+                     '2-3 jackhmmer tasks and 0-1 hhblit tasks.  Make sure '
+                     'you have enough cpus to handle all three running '
+                     'at once.')
+flags.DEFINE_integer('hhblits_n_cpu', 4, 'Specify cpus used by HHBlits. '
+                     'HHBlits seems most efficient using 4, '
                      'but 16 can be 67% faster.')
-flags.DEFINE_integer('jackhmmer_n_cpu', 8, 'Specify threads used by Jackhmmer. '
+flags.DEFINE_integer('jackhmmer_n_cpu', 8, 'Specify cpus used by Jackhmmer. '
                      'Jackhmmer seems to work fine with 8, but you '
                      'might use fewer if you run the preprocessing step '
                      'in parallel.')
@@ -364,6 +369,7 @@ def main(argv):
       template_searcher=template_searcher,
       template_featurizer=template_featurizer,
       use_small_bfd=use_small_bfd,
+      parallel_execution=FLAGS.parallel_execution,
       use_precomputed_msas=FLAGS.use_precomputed_msas)
 
   if run_multimer_system:
