@@ -160,7 +160,7 @@ def predict_structure(
   """Predicts structure using AlphaFold for the given sequence."""
   logging.info('Predicting %s', fasta_name)
   timings = {}
-  output_dir = os.path.join(output_dir_base, fasta_name)
+  output_dir = os.path.join(output_dir_base, f'{fasta_name}.tmp')
   if not os.path.exists(output_dir):
     os.makedirs(output_dir)
   msa_output_dir = os.path.join(output_dir, 'msas')
@@ -273,6 +273,7 @@ def predict_structure(
   timings_output_path = os.path.join(output_dir, 'timings.json')
   with open(timings_output_path, 'w') as f:
     f.write(json.dumps(timings, indent=4))
+  os.rename(output_dir, os.path.join(output_dir_base, fasta_name))
 
 
 def main(argv):
@@ -307,7 +308,7 @@ def main(argv):
     num_ensemble = 1
 
   # Check for duplicate FASTA file names.
-  fasta_names = [pathlib.Path(p).stem for p in FLAGS.fasta_paths]
+  fasta_names = [pathlib.Path(p).name for p in FLAGS.fasta_paths]
   if len(fasta_names) != len(set(fasta_names)):
     raise ValueError('All FASTA paths must have a unique basename.')
 
