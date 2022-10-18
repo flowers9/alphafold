@@ -128,6 +128,13 @@ flags.DEFINE_boolean('use_gpu_relax', None, 'Whether to relax on GPU. '
                      'Relax on GPU can be much faster than CPU, so it is '
                      'recommended to enable if possible. GPUs must be available'
                      ' if this setting is enabled.')
+flags.DEFINE_integer('hhblits_n_cpu', 4, 'Threads used by HHBlits',
+                     'HHBlits seems most efficient using 4 threads, '
+                     'but 16 can be 67% faster.')
+flags.DEFINE_integer('jackhmmer_n_cpu', 8, 'Threads used by Jackhmmer',
+                     'Jackhmmer seems to work fine with 8, but you '
+                     'might use fewer if you run the preprocessing step '
+                     'in parallel.')
 
 FLAGS = flags.FLAGS
 
@@ -338,7 +345,9 @@ def main(argv):
 
   monomer_data_pipeline = pipeline.DataPipeline(
       jackhmmer_binary_path=FLAGS.jackhmmer_binary_path,
+      jackhmmer_n_cpu=FLAGS.jackhmmer_n_cpu,
       hhblits_binary_path=FLAGS.hhblits_binary_path,
+      hhblits_n_cpu=FLAGS.hhblits_n_cpu,
       uniref90_database_path=FLAGS.uniref90_database_path,
       mgnify_database_path=FLAGS.mgnify_database_path,
       bfd_database_path=FLAGS.bfd_database_path,
