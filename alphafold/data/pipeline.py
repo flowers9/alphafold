@@ -154,7 +154,7 @@ class DataPipeline:
     self.mgnify_max_hits = mgnify_max_hits
     self.uniref_max_hits = uniref_max_hits
     self.use_precomputed_msas = use_precomputed_msas
-    self.parallel_execution = parallel_exceution
+    self.parallel_execution = parallel_execution
 
   def run_search_templates(self, input_sequence: str, msa_output_dir: str,
                            jackhmmer_uniref_90_result: str) -> templates.TemplateSearchResult:
