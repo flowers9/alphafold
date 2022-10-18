@@ -119,6 +119,11 @@ flags.DEFINE_boolean('use_precomputed_msas', False, 'Whether to read MSAs that '
                      'runs that are to reuse the MSAs. WARNING: This will not '
                      'check if the sequence, database or configuration have '
                      'changed.')
+flags.DEFINE_boolean('only_precompute_msas', False, 'Only run the MSA '
+                     'creating steps.  These only use cpus, not '
+                     'gpus, allowing a subsequent run to specify '
+                     'use_precomputed_msas to run the gpu-requiring '
+                     'sections.')
 flags.DEFINE_boolean('run_relax', True, 'Whether to run the final relaxation '
                      'step on the predicted models. Turning relax off might '
                      'result in predictions with distracting stereochemical '
@@ -126,12 +131,12 @@ flags.DEFINE_boolean('run_relax', True, 'Whether to run the final relaxation '
                      'with the relaxation stage.')
 flags.DEFINE_boolean('use_gpu_relax', None, 'Whether to relax on GPU. '
                      'Relax on GPU can be much faster than CPU, so it is '
-                     'recommended to enable if possible. GPUs must be available'
-                     ' if this setting is enabled.')
-flags.DEFINE_integer('hhblits_n_cpu', 4, 'Threads used by HHBlits',
+                     'recommended to enable if possible. GPUs must be available '
+                     'if this setting is enabled.')
+flags.DEFINE_integer('hhblits_n_cpu', 4, 'Specify threads used by HHBlits. '
                      'HHBlits seems most efficient using 4 threads, '
                      'but 16 can be 67% faster.')
-flags.DEFINE_integer('jackhmmer_n_cpu', 8, 'Threads used by Jackhmmer',
+flags.DEFINE_integer('jackhmmer_n_cpu', 8, 'Specify threads used by Jackhmmer. '
                      'Jackhmmer seems to work fine with 8, but you '
                      'might use fewer if you run the preprocessing step '
                      'in parallel.')
@@ -163,6 +168,7 @@ def predict_structure(
     model_runners: Dict[str, model.RunModel],
     amber_relaxer: relax.AmberRelaxation,
     benchmark: bool,
+    only_precompute_msas: bool,
     random_seed: int):
   """Predicts structure using AlphaFold for the given sequence."""
   logging.info('Predicting %s', fasta_name)
@@ -180,6 +186,8 @@ def predict_structure(
       input_fasta_path=fasta_path,
       msa_output_dir=msa_output_dir)
   timings['features'] = time.time() - t_0
+  if only_precompute_msas:
+      return
 
   # Write out features as a pickled dictionary.
   features_output_path = os.path.join(output_dir, 'features.pkl')
@@ -413,6 +421,7 @@ def main(argv):
         model_runners=model_runners,
         amber_relaxer=amber_relaxer,
         benchmark=FLAGS.benchmark,
+        only_precompute_msas=FLAGS.only_precompute_msas,
         random_seed=random_seed)
 
 
