@@ -125,7 +125,8 @@ class DataPipeline:
                mgnify_max_hits: int = 501,
                uniref_max_hits: int = 10000,
                hhblits_n_cpu: int = 4,
-               jackhmmer_n_cpu:_n_cpu: int = 8,
+               jackhmmer_n_cpu: int = 8,
+               parallel_execution: bool = False,
                use_precomputed_msas: bool = False):
     """Initializes the data pipeline."""
     self._use_small_bfd = use_small_bfd
@@ -152,6 +153,36 @@ class DataPipeline:
     self.mgnify_max_hits = mgnify_max_hits
     self.uniref_max_hits = uniref_max_hits
     self.use_precomputed_msas = use_precomputed_msas
+    self.parallel_execution = parallel_exceution
+
+  def run_search_templates(self, input_sequence: str, msa_output_dir: str,
+                           jackhmmer_uniref_90_result: str) -> TemplateSearchResult:
+    pdb_hits_out_path = os.path.join(
+        msa_output_dir, f'pdb_hits.{self.template_searcher.output_format}')
+    if not self.use_precomputed_msas or not os.path.exists(pdb_hits_out_path):
+      msa_for_templates = jackhmmer_uniref90_result
+      msa_for_templates = parsers.deduplicate_stockholm_msa(msa_for_templates)
+      msa_for_templates = parsers.remove_empty_columns_from_stockholm_msa(
+          msa_for_templates)
+      if self.template_searcher.input_format == 'sto':
+        pdb_templates_result = self.template_searcher.query(msa_for_templates)
+      elif self.template_searcher.input_format == 'a3m':
+        uniref90_msa_as_a3m = parsers.convert_stockholm_to_a3m(msa_for_templates)
+        pdb_templates_result = self.template_searcher.query(uniref90_msa_as_a3m)
+      else:
+        raise ValueError('Unrecognized template input format: '
+                         f'{self.template_searcher.input_format}')
+      with open(pdb_hits_out_path, 'w') as f:
+        f.write(pdb_templates_result)
+    else:
+      with open(pdb_hits_out_path, 'r') as f:
+        pdb_templates_result = f.read()
+    pdb_template_hits = self.template_searcher.get_template_hits(
+        output_string=pdb_templates_result, input_sequence=input_sequence)
+    templates_result = self.template_featurizer.get_templates(
+        query_sequence=input_sequence,
+        hits=pdb_template_hits)
+    return templates_result
 
   def process(self, input_fasta_path: str, msa_output_dir: str) -> FeatureDict:
     """Runs alignment tools on the input sequence and creates features."""
@@ -165,70 +196,42 @@ class DataPipeline:
     input_description = input_descs[0]
     num_res = len(input_sequence)
 
-    uniref90_out_path = os.path.join(msa_output_dir, 'uniref90_hits.sto')
     jackhmmer_uniref90_result = run_msa_tool(
         msa_runner=self.jackhmmer_uniref90_runner,
         input_fasta_path=input_fasta_path,
-        msa_out_path=uniref90_out_path,
+        msa_out_path=os.path.join(msa_output_dir, 'uniref90_hits.sto'),
         msa_format='sto',
         use_precomputed_msas=self.use_precomputed_msas,
         max_sto_sequences=self.uniref_max_hits)
-    mgnify_out_path = os.path.join(msa_output_dir, 'mgnify_hits.sto')
+    uniref90_msa = parsers.parse_stockholm(jackhmmer_uniref90_result['sto'])
+
+    templates_result = run_search_templates(input_sequence, msa_output_dir, jackhmmer_uniref90_result['sto'])
+
     jackhmmer_mgnify_result = run_msa_tool(
         msa_runner=self.jackhmmer_mgnify_runner,
         input_fasta_path=input_fasta_path,
-        msa_out_path=mgnify_out_path,
+        msa_out_path=os.path.join(msa_output_dir, 'mgnify_hits.sto'),
         msa_format='sto',
         use_precomputed_msas=self.use_precomputed_msas,
         max_sto_sequences=self.mgnify_max_hits)
-
-    msa_for_templates = jackhmmer_uniref90_result['sto']
-    msa_for_templates = parsers.deduplicate_stockholm_msa(msa_for_templates)
-    msa_for_templates = parsers.remove_empty_columns_from_stockholm_msa(
-        msa_for_templates)
-
-    if self.template_searcher.input_format == 'sto':
-      pdb_templates_result = self.template_searcher.query(msa_for_templates)
-    elif self.template_searcher.input_format == 'a3m':
-      uniref90_msa_as_a3m = parsers.convert_stockholm_to_a3m(msa_for_templates)
-      pdb_templates_result = self.template_searcher.query(uniref90_msa_as_a3m)
-    else:
-      raise ValueError('Unrecognized template input format: '
-                       f'{self.template_searcher.input_format}')
-
-    pdb_hits_out_path = os.path.join(
-        msa_output_dir, f'pdb_hits.{self.template_searcher.output_format}')
-    with open(pdb_hits_out_path, 'w') as f:
-      f.write(pdb_templates_result)
-
-    uniref90_msa = parsers.parse_stockholm(jackhmmer_uniref90_result['sto'])
     mgnify_msa = parsers.parse_stockholm(jackhmmer_mgnify_result['sto'])
 
-    pdb_template_hits = self.template_searcher.get_template_hits(
-        output_string=pdb_templates_result, input_sequence=input_sequence)
-
     if self._use_small_bfd:
-      bfd_out_path = os.path.join(msa_output_dir, 'small_bfd_hits.sto')
       jackhmmer_small_bfd_result = run_msa_tool(
           msa_runner=self.jackhmmer_small_bfd_runner,
           input_fasta_path=input_fasta_path,
-          msa_out_path=bfd_out_path,
+          msa_out_path=os.path.join(msa_output_dir, 'small_bfd_hits.sto'),
           msa_format='sto',
           use_precomputed_msas=self.use_precomputed_msas)
       bfd_msa = parsers.parse_stockholm(jackhmmer_small_bfd_result['sto'])
     else:
-      bfd_out_path = os.path.join(msa_output_dir, 'bfd_uniclust_hits.a3m')
       hhblits_bfd_uniclust_result = run_msa_tool(
           msa_runner=self.hhblits_bfd_uniclust_runner,
           input_fasta_path=input_fasta_path,
-          msa_out_path=bfd_out_path,
+          msa_out_path=os.path.join(msa_output_dir, 'bfd_uniclust_hits.a3m'),
           msa_format='a3m',
           use_precomputed_msas=self.use_precomputed_msas)
       bfd_msa = parsers.parse_a3m(hhblits_bfd_uniclust_result['a3m'])
-
-    templates_result = self.template_featurizer.get_templates(
-        query_sequence=input_sequence,
-        hits=pdb_template_hits)
 
     sequence_features = make_sequence_features(
         sequence=input_sequence,
