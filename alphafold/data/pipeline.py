@@ -250,9 +250,9 @@ class DataPipeline:
         mgnify_msa = mgnify_future.result()
         bfd_msa = bfd_future.result()
     else:
-      uniref90_msa, templates_result = self.run_jackhmmer_uniref90(input_fasta_path, msa_output_dir)
-      mgnify_msa = self.run_jackhmmer_mgnify(input_fasta_path, msa_output_dir)
-      bfd_msa = self.run_search_bfd(input_fasta_path, msa_output_dir)
+      uniref90_msa, templates_result = self.run_jackhmmer_uniref90()
+      mgnify_msa = self.run_jackhmmer_mgnify()
+      bfd_msa = self.run_search_bfd()
 
     sequence_features = make_sequence_features(
         sequence=self.input_sequence,
