@@ -127,7 +127,7 @@ class DataPipeline:
                uniref_max_hits: int = 10000,
                hhblits_n_cpu: int = 4,
                jackhmmer_n_cpu: int = 8,
-               parallel_execution: bool = False,
+               parallel_msa_execution: bool = False,
                use_precomputed_msas: bool = False):
     """Initializes the data pipeline."""
     self._use_small_bfd = use_small_bfd
@@ -154,12 +154,11 @@ class DataPipeline:
     self.mgnify_max_hits = mgnify_max_hits
     self.uniref_max_hits = uniref_max_hits
     self.use_precomputed_msas = use_precomputed_msas
-    self.parallel_execution = parallel_execution
+    self.parallel_msa_execution = parallel_msa_execution
 
-  def run_search_templates(self, input_sequence: str, msa_output_dir: str,
-                           jackhmmer_uniref_90_result: str) -> templates.TemplateSearchResult:
+  def run_search_templates(self, jackhmmer_uniref90_result: str) -> templates.TemplateSearchResult:
     pdb_hits_out_path = os.path.join(
-        msa_output_dir, f'pdb_hits.{self.template_searcher.output_format}')
+        self.msa_output_dir, f'pdb_hits.{self.template_searcher.output_format}')
     if not self.use_precomputed_msas or not os.path.exists(pdb_hits_out_path):
       msa_for_templates = jackhmmer_uniref90_result
       msa_for_templates = parsers.deduplicate_stockholm_msa(msa_for_templates)
@@ -179,50 +178,50 @@ class DataPipeline:
       with open(pdb_hits_out_path, 'r') as f:
         pdb_templates_result = f.read()
     pdb_template_hits = self.template_searcher.get_template_hits(
-        output_string=pdb_templates_result, input_sequence=input_sequence)
+        output_string=pdb_templates_result, input_sequence=self.input_sequence)
     templates_result = self.template_featurizer.get_templates(
-        query_sequence=input_sequence,
+        query_sequence=self.input_sequence,
         hits=pdb_template_hits)
     return templates_result
 
   # both runs jackhmmer_uniref90 and searches the resulting templates
-  def run_jackhmmer_uniref90(self, input_fasta_path, msa_output_dir) -> Tuple[parsers.Msa, templates.TemplateSearchResult]:
+  def run_jackhmmer_uniref90(self) -> Tuple[parsers.Msa, templates.TemplateSearchResult]:
     jackhmmer_uniref90_result = run_msa_tool(
         msa_runner=self.jackhmmer_uniref90_runner,
-        input_fasta_path=input_fasta_path,
-        msa_out_path=os.path.join(msa_output_dir, 'uniref90_hits.sto'),
+        input_fasta_path=self.input_fasta_path,
+        msa_out_path=os.path.join(self.msa_output_dir, 'uniref90_hits.sto'),
         msa_format='sto',
         use_precomputed_msas=self.use_precomputed_msas,
         max_sto_sequences=self.uniref_max_hits)
     uniref90_msa = parsers.parse_stockholm(jackhmmer_uniref90_result['sto'])
-    templates_result = run_search_templates(input_sequence, msa_output_dir, jackhmmer_uniref90_result['sto'])
+    templates_result = self.run_search_templates(jackhmmer_uniref90_result['sto'])
     return uniref90_msa, templates_result
 
-  def run_jackhmmer_mgnify(self, input_fasta_path, msa_output_dir) -> parsers.Msa:
+  def run_jackhmmer_mgnify(self) -> parsers.Msa:
     jackhmmer_mgnify_result = run_msa_tool(
         msa_runner=self.jackhmmer_mgnify_runner,
-        input_fasta_path=input_fasta_path,
-        msa_out_path=os.path.join(msa_output_dir, 'mgnify_hits.sto'),
+        input_fasta_path=self.input_fasta_path,
+        msa_out_path=os.path.join(self.msa_output_dir, 'mgnify_hits.sto'),
         msa_format='sto',
         use_precomputed_msas=self.use_precomputed_msas,
         max_sto_sequences=self.mgnify_max_hits)
     mgnify_msa = parsers.parse_stockholm(jackhmmer_mgnify_result['sto'])
     return mgnify_msa
 
-  def run_search_bfd(self, input_fasta_path, msa_output_dir) -> parsers.Msa:
+  def run_search_bfd(self) -> parsers.Msa:
     if self._use_small_bfd:
       jackhmmer_small_bfd_result = run_msa_tool(
           msa_runner=self.jackhmmer_small_bfd_runner,
-          input_fasta_path=input_fasta_path,
-          msa_out_path=os.path.join(msa_output_dir, 'small_bfd_hits.sto'),
+          input_fasta_path=self.input_fasta_path,
+          msa_out_path=os.path.join(self.msa_output_dir, 'small_bfd_hits.sto'),
           msa_format='sto',
           use_precomputed_msas=self.use_precomputed_msas)
       bfd_msa = parsers.parse_stockholm(jackhmmer_small_bfd_result['sto'])
     else:
       hhblits_bfd_uniclust_result = run_msa_tool(
           msa_runner=self.hhblits_bfd_uniclust_runner,
-          input_fasta_path=input_fasta_path,
-          msa_out_path=os.path.join(msa_output_dir, 'bfd_uniclust_hits.a3m'),
+          input_fasta_path=self.input_fasta_path,
+          msa_out_path=os.path.join(self.msa_output_dir, 'bfd_uniclust_hits.a3m'),
           msa_format='a3m',
           use_precomputed_msas=self.use_precomputed_msas)
       bfd_msa = parsers.parse_a3m(hhblits_bfd_uniclust_result['a3m'])
@@ -230,31 +229,33 @@ class DataPipeline:
 
   def process(self, input_fasta_path: str, msa_output_dir: str) -> FeatureDict:
     """Runs alignment tools on the input sequence and creates features."""
+    self.input_fasta_path = input_fasta_path
+    self.msa_output_dir = msa_output_dir
     with open(input_fasta_path) as f:
       input_fasta_str = f.read()
     input_seqs, input_descs = parsers.parse_fasta(input_fasta_str)
     if len(input_seqs) != 1:
       raise ValueError(
           f'More than one input sequence found in {input_fasta_path}.')
-    input_sequence = input_seqs[0]
+    self.input_sequence = input_seqs[0]
     input_description = input_descs[0]
-    num_res = len(input_sequence)
+    num_res = len(self.input_sequence)
 
-    if self.parallel_execution:
+    if self.parallel_msa_execution:
       with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        uniref90_future = executor.submit(run_jackhmmer_uniref90, input_fasta_path, msa_output_dir)
-        mgnify_future = executor.submit(run_jackhmmer_mgnify, input_fasta_path, msa_output_dir)
-        bfd_future = executor.submit(run_search_bfd, input_fasta_path, msa_output_dir)
+        uniref90_future = executor.submit(self.run_jackhmmer_uniref90)
+        mgnify_future = executor.submit(self.run_jackhmmer_mgnify)
+        bfd_future = executor.submit(self.run_search_bfd)
         uniref90_msa, templates_result = uniref90_future.result()
         mgnify_msa = mgnify_future.result()
         bfd_msa = bfd_future.result()
     else:
-      uniref90_msa, templates_result = run_jackhmmer_uniref90(input_fasta_path, msa_output_dir)
-      mgnify_msa = run_jackhmmer_mgnify(input_fasta_path, msa_output_dir)
-      bfd_msa = run_search_bfd(input_fasta_path, msa_output_dir)
+      uniref90_msa, templates_result = self.run_jackhmmer_uniref90(input_fasta_path, msa_output_dir)
+      mgnify_msa = self.run_jackhmmer_mgnify(input_fasta_path, msa_output_dir)
+      bfd_msa = self.run_search_bfd(input_fasta_path, msa_output_dir)
 
     sequence_features = make_sequence_features(
-        sequence=input_sequence,
+        sequence=self.input_sequence,
         description=input_description,
         num_res=num_res)
 
