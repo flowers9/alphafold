@@ -370,6 +370,7 @@ def main(argv):
       template_featurizer=template_featurizer,
       use_small_bfd=use_small_bfd,
       parallel_msa_execution=FLAGS.parallel_msa_execution,
+      skip_template_search=FLAGS.only_precompute_msas,
       use_precomputed_msas=FLAGS.use_precomputed_msas)
 
   if run_multimer_system:

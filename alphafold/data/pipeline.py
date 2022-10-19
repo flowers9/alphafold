@@ -128,9 +128,10 @@ class DataPipeline:
                hhblits_n_cpu: int = 4,
                jackhmmer_n_cpu: int = 8,
                parallel_msa_execution: bool = False,
+               skip_template_search: bool = False,
                use_precomputed_msas: bool = False):
     """Initializes the data pipeline."""
-    self._use_small_bfd = use_small_bfd
+    self.use_small_bfd = use_small_bfd
     self.jackhmmer_uniref90_runner = jackhmmer.Jackhmmer(
         binary_path=jackhmmer_binary_path,
         n_cpu=jackhmmer_n_cpu,
@@ -155,6 +156,7 @@ class DataPipeline:
     self.uniref_max_hits = uniref_max_hits
     self.use_precomputed_msas = use_precomputed_msas
     self.parallel_msa_execution = parallel_msa_execution
+    self.skip_template_search = skip_template_search
 
   def run_search_templates(self, jackhmmer_uniref90_result: str) -> templates.TemplateSearchResult:
     pdb_hits_out_path = os.path.join(
@@ -177,15 +179,20 @@ class DataPipeline:
     else:
       with open(pdb_hits_out_path, 'r') as f:
         pdb_templates_result = f.read()
-    pdb_template_hits = self.template_searcher.get_template_hits(
-        output_string=pdb_templates_result, input_sequence=self.input_sequence)
-    templates_result = self.template_featurizer.get_templates(
-        query_sequence=self.input_sequence,
-        hits=pdb_template_hits)
-    return templates_result
+    if self.skip_template_search:
+      templates_result = templates.TemplateSearchResult()
+      templates_result.features = {}
+      return templates_result
+    else:
+      pdb_template_hits = self.template_searcher.get_template_hits(
+          output_string=pdb_templates_result, input_sequence=self.input_sequence)
+      templates_result = self.template_featurizer.get_templates(
+          query_sequence=self.input_sequence,
+          hits=pdb_template_hits)
+      return templates_result
 
-  # both runs jackhmmer_uniref90 and searches the resulting templates
   def run_jackhmmer_uniref90(self) -> Tuple[parsers.Msa, templates.TemplateSearchResult]:
+    """ both runs jackhmmer_uniref90 and searches the resulting templates """
     jackhmmer_uniref90_result = run_msa_tool(
         msa_runner=self.jackhmmer_uniref90_runner,
         input_fasta_path=self.input_fasta_path,
@@ -209,7 +216,7 @@ class DataPipeline:
     return mgnify_msa
 
   def run_search_bfd(self) -> parsers.Msa:
-    if self._use_small_bfd:
+    if self.use_small_bfd:
       jackhmmer_small_bfd_result = run_msa_tool(
           msa_runner=self.jackhmmer_small_bfd_runner,
           input_fasta_path=self.input_fasta_path,
@@ -266,8 +273,9 @@ class DataPipeline:
     logging.info('MGnify MSA size: %d sequences.', len(mgnify_msa))
     logging.info('Final (deduplicated) MSA size: %d sequences.',
                  msa_features['num_alignments'][0])
-    logging.info('Total number of templates (NB: this can include bad '
-                 'templates and is later filtered to top 4): %d.',
-                 templates_result.features['template_domain_names'].shape[0])
+    if not self.skip_template_search:
+      logging.info('Total number of templates (NB: this can include bad '
+                   'templates and is later filtered to top 4): %d.',
+                   templates_result.features['template_domain_names'].shape[0])
 
     return {**sequence_features, **msa_features, **templates_result.features}
