@@ -174,6 +174,7 @@ def predict_structure(
     amber_relaxer: relax.AmberRelaxation,
     benchmark: bool,
     only_precompute_msas: bool,
+    use_precomputed_msas: bool,
     random_seed: int):
   """Predicts structure using AlphaFold for the given sequence."""
   logging.info('Predicting %s', fasta_name)
@@ -181,23 +182,25 @@ def predict_structure(
   output_dir = os.path.join(output_dir_base, f'{fasta_name}.tmp')
   if not os.path.exists(output_dir):
     os.makedirs(output_dir)
-  msa_output_dir = os.path.join(output_dir, 'msas')
-  if not os.path.exists(msa_output_dir):
-    os.makedirs(msa_output_dir)
 
-  # Get features.
-  t_0 = time.time()
-  feature_dict = data_pipeline.process(
-      input_fasta_path=fasta_path,
-      msa_output_dir=msa_output_dir)
-  timings['features'] = time.time() - t_0
-  if only_precompute_msas:
-      return
-
-  # Write out features as a pickled dictionary.
   features_output_path = os.path.join(output_dir, 'features.pkl')
-  with open(features_output_path, 'wb') as f:
-    pickle.dump(feature_dict, f, protocol=4)
+  if use_precomputed_msas:
+    with open(f'{features_output_path}', 'rb') as f:
+      feature_dict = pickle.load(f)
+    timings['features'] = feature_dict['timings']
+  else:
+    # Get features.
+    t_0 = time.time()
+    feature_dict = data_pipeline.process(input_fasta_path=fasta_path)
+    timings['features'] = time.time() - t_0
+    # store this in case we're precomputing, so we have it later
+    feature_dict['timings'] = np.array(timings['features'], float)
+    # Write out features as a pickled dictionary.
+    with open(f'{features_output_path}.tmp', 'wb') as f:
+      pickle.dump(feature_dict, f, protocol=4)
+    os.rename(f'{features_output_path}.tmp', features_output_path)
+    if only_precompute_msas:
+        return
 
   unrelaxed_pdbs = {}
   relaxed_pdbs = {}
@@ -369,17 +372,14 @@ def main(argv):
       template_searcher=template_searcher,
       template_featurizer=template_featurizer,
       use_small_bfd=use_small_bfd,
-      parallel_msa_execution=FLAGS.parallel_msa_execution,
-      skip_template_search=FLAGS.only_precompute_msas,
-      use_precomputed_msas=FLAGS.use_precomputed_msas)
+      parallel_msa_execution=FLAGS.parallel_msa_execution)
 
   if run_multimer_system:
     num_predictions_per_model = FLAGS.num_multimer_predictions_per_model
     data_pipeline = pipeline_multimer.DataPipeline(
         monomer_data_pipeline=monomer_data_pipeline,
         jackhmmer_binary_path=FLAGS.jackhmmer_binary_path,
-        uniprot_database_path=FLAGS.uniprot_database_path,
-        use_precomputed_msas=FLAGS.use_precomputed_msas)
+        uniprot_database_path=FLAGS.uniprot_database_path)
   else:
     num_predictions_per_model = 1
     data_pipeline = monomer_data_pipeline
@@ -429,6 +429,7 @@ def main(argv):
         amber_relaxer=amber_relaxer,
         benchmark=FLAGS.benchmark,
         only_precompute_msas=FLAGS.only_precompute_msas,
+        use_precomputed_msas=FLAGS.use_precomputed_msas,
         random_seed=random_seed)
 
 
