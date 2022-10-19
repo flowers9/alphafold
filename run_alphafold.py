@@ -187,7 +187,7 @@ def predict_structure(
   if use_precomputed_msas:
     with open(f'{features_output_path}', 'rb') as f:
       feature_dict = pickle.load(f)
-    timings['features'] = feature_dict['timings']
+    timings['features'] = feature_dict['timings'].item()
   else:
     # Get features.
     t_0 = time.time()
