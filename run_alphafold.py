@@ -112,13 +112,13 @@ flags.DEFINE_integer('num_multimer_predictions_per_model', 5, 'How many '
                      'generated per model. E.g. if this is 2 and there are 5 '
                      'models then there will be 10 predictions per input. '
                      'Note: this FLAG only applies if model_preset=multimer')
-flags.DEFINE_boolean('use_precomputed_msas', False, 'Whether to read MSAs that '
-                     'have been written to disk instead of running the MSA '
-                     'tools. The MSA files are looked up in the output '
-                     'directory, so it must stay the same between multiple '
-                     'runs that are to reuse the MSAs. WARNING: This will not '
-                     'check if the sequence, database or configuration have '
-                     'changed.')
+flags.DEFINE_enum('use_precomputed_msas', 'False', ['False', 'True', 'Forced'],
+                  'Whether to read features.pkl that have been written to '
+                  'disk instead of running the MSA tools. The file is '
+                  'looked up in the output directory, so it must stay '
+                  'the same between multiple runs that are to reuse the '
+                  'file. WARNING: This will not check if the sequence, '
+                  'database or configuration have changed.')
 flags.DEFINE_boolean('only_precompute_msas', False, 'Only run the MSA '
                      'creating steps.  These only use cpus, not '
                      'gpus, allowing a subsequent run to specify '
@@ -174,7 +174,7 @@ def predict_structure(
     amber_relaxer: relax.AmberRelaxation,
     benchmark: bool,
     only_precompute_msas: bool,
-    use_precomputed_msas: bool,
+    use_precomputed_msas: str,
     random_seed: int):
   """Predicts structure using AlphaFold for the given sequence."""
   logging.info('Predicting %s', fasta_name)
@@ -184,8 +184,9 @@ def predict_structure(
     os.makedirs(output_dir)
 
   features_output_path = os.path.join(output_dir, 'features.pkl')
-  if use_precomputed_msas:
-    with open(f'{features_output_path}', 'rb') as f:
+  if (use_precomputed_msas == 'Forced' or (use_precomputed_msas == 'True'
+      and pathlib.Path(features_output_path).exists())):
+    with open(features_output_path, 'rb') as f:
       feature_dict = pickle.load(f)
     timings['features'] = feature_dict['timings'].item()
   else:
