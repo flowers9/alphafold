@@ -1,5 +1,21 @@
 ![header](imgs/header.jpg)
 
+This version of AlphaFold has been modified by Dave Flowers, but should
+generally perform the same.
+
+I've made no changes to the prediction routines.  The main changes were to
+parallelize the pre-processing routines (which, on average, now take about
+the same time as the prediction step, and used to take a lot longer) and
+to increase the number of threads hhblits uses (from 4 to 16).  hhblits is
+responsible for a lot of the time taken in preprocessing, but 16 seems
+to be about the limit of number of threads it can use efficiently.
+
+Output directories now have a .tmp appended during processing.
+features.pkl also has a .tmp during the preprocessing step.  The msa
+subdirectory isn't created, instead --use_precomputed_msas=True will look
+for features.pkl.  The precompute timing is now stored in features.pkl,
+so a later pass that uses it can store the timing info in timings.json.
+
 # AlphaFold
 
 This package provides an implementation of the inference pipeline of AlphaFold
